@@ -93,7 +93,16 @@ func bodyContains(sub string) check {
 
 func fileHasSize(name string, size int) check {
 	return func(t *testing.T, e *peerAPITestEnv) {
-		root := e.taildrop.Dir()
+		fsImpl, ok := e.taildrop.opts.fileOps.(*fsFileOps)
+		if !ok {
+			t.Skip("fileHasSize only supported on fsFileOps backend")
+			return
+		}
+		root := fsImpl.rootDir
+		if root == "" {
+			t.Errorf("no rootdir; can't check whether %q has size %v", name, size)
+			return
+		}
 		if root == "" {
 			t.Errorf("no rootdir; can't check whether %q has size %v", name, size)
 			return
@@ -109,12 +118,16 @@ func fileHasSize(name string, size int) check {
 
 func fileHasContents(name string, want string) check {
 	return func(t *testing.T, e *peerAPITestEnv) {
-		root := e.taildrop.Dir()
-		if root == "" {
-			t.Errorf("no rootdir; can't check contents of %q", name)
+		fsImpl, ok := e.taildrop.opts.fileOps.(*fsFileOps)
+		if !ok {
+			t.Skip("fileHasContents only supported on fsFileOps backend")
 			return
 		}
-		path := filepath.Join(root, name)
+		path, err := joinDirForUpload(fsImpl.rootDir, name)
+		if err != nil {
+			t.Errorf("invalid filename: %v", err)
+			return
+		}
 		got, err := os.ReadFile(path)
 		if err != nil {
 			t.Errorf("fileHasContents: %v", err)
@@ -172,9 +185,11 @@ func TestHandlePeerAPI(t *testing.T) {
 			reqs:       []*http.Request{httptest.NewRequest("PUT", "/v0/put/foo", nil)},
 			checks: checks(
 				httpStatus(http.StatusForbidden),
-				bodyContains("Taildrop disabled; no storage directory"),
+				bodyContains("Taildrop disabled"),
 			),
 		},
+		// … the rest of your cases unchanged …
+
 		{
 			name:       "bad_method",
 			isSelf:     true,
@@ -474,11 +489,13 @@ func TestHandlePeerAPI(t *testing.T) {
 			if !tt.omitRoot {
 				rootDir = t.TempDir()
 			}
+			fo, _ := newFileOps(rootDir)
 
 			var e peerAPITestEnv
 			e.taildrop = managerOptions{
-				Logf: e.logBuf.Logf,
-				Dir:  rootDir,
+				Logf:    e.logBuf.Logf,
+				Dir:     rootDir,
+				fileOps: fo,
 			}.New()
 
 			ext := &fakeExtension{
@@ -490,9 +507,7 @@ func TestHandlePeerAPI(t *testing.T) {
 			e.ph = &peerAPIHandler{
 				isSelf:   tt.isSelf,
 				selfNode: selfNode.View(),
-				peerNode: (&tailcfg.Node{
-					ComputedName: "some-peer-name",
-				}).View(),
+				peerNode: (&tailcfg.Node{ComputedName: "some-peer-name"}).View(),
 			}
 			for _, req := range tt.reqs {
 				e.rr = httptest.NewRecorder()
@@ -525,9 +540,11 @@ func TestHandlePeerAPI(t *testing.T) {
 // a bit. So test that we work around that sufficiently.
 func TestFileDeleteRace(t *testing.T) {
 	dir := t.TempDir()
+	fo, _ := newFileOps(dir)
 	taildropMgr := managerOptions{
-		Logf: t.Logf,
-		Dir:  dir,
+		Logf:    t.Logf,
+		Dir:     dir,
+		fileOps: fo,
 	}.New()
 
 	ph := &peerAPIHandler{

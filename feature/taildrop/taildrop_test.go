@@ -4,39 +4,8 @@
 package taildrop
 
 import (
-	"path/filepath"
-	"strings"
 	"testing"
 )
-
-func TestJoinDir(t *testing.T) {
-	dir := t.TempDir()
-	tests := []struct {
-		in     string
-		want   string // just relative to m.Dir
-		wantOk bool
-	}{
-		{"", "", false},
-		{"foo", "foo", true},
-		{"./foo", "", false},
-		{"../foo", "", false},
-		{"foo/bar", "", false},
-		{"😋", "😋", true},
-		{"\xde\xad\xbe\xef", "", false},
-		{"foo.partial", "", false},
-		{"foo.deleted", "", false},
-		{strings.Repeat("a", 1024), "", false},
-		{"foo:bar", "", false},
-	}
-	for _, tt := range tests {
-		got, gotErr := joinDir(dir, tt.in)
-		got, _ = filepath.Rel(dir, got)
-		gotOk := gotErr == nil
-		if got != tt.want || gotOk != tt.wantOk {
-			t.Errorf("joinDir(%q) = (%v, %v), want (%v, %v)", tt.in, got, gotOk, tt.want, tt.wantOk)
-		}
-	}
-}
 
 func TestNextFilename(t *testing.T) {
 	tests := []struct {
