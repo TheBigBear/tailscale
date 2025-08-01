@@ -159,8 +159,7 @@ func (m fsFileOps) Rename(oldPath, newName string) (newPath string, err error) {
 }
 
 // sha256File computes the SHA‑256 of a file.
-func sha256File(path string) ([sha256.Size]byte, error) {
-	var sum [sha256.Size]byte
+func sha256File(path string) (sum [sha256.Size]byte, _ error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return sum, err
